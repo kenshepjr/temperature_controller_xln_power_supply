@@ -19,7 +19,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 # import equipment modules
-import mod_thermocouple as therm
+import mod_thermocouple_ISR as therm
 import mod_XLN3640 as xln
 
 # import PID module
@@ -597,7 +597,7 @@ def initialize_controllers():
     # BK Precision Power Supply - Substrate Heater
     Sub_PS = xln.XLN3640(ports['BKP PS']) # open serial connection
     # sets the initial date
-    Sub_Data.vars['temperature'].set(Sub_TC.get_temp())
+    Sub_Data.vars['temperature'].set(Sub_TC.get_temp())    
     
     if Sub_PS.get_mode() == 'OFF':
         Sub_Data.vars['output'].set(False)
@@ -606,10 +606,20 @@ def initialize_controllers():
         
     Sub_Data.vars['SP_V'].set(Sub_PS.get_voltage_setpoint())
     Sub_Data.vars['SP_I'].set(Sub_PS.get_current_setpoint())
-    Sub_Data.vars['voltage'].set(Sub_PS.get_voltage())
-    Sub_Data.vars['current'].set(Sub_PS.get_current())
-    Sub_Data.vars['resistance'].set(Sub_PS.calculate_resistance())
-    Sub_Data.vars['power'].set(Sub_PS.calculate_power())
+    
+    # Read voltage and current once
+    V = Sub_PS.get_voltage()
+    I = Sub_PS.get_current()
+
+    # Calculate resistance and power
+    R = V / I if I != 0 else 0
+    P = V * I
+
+    # Update data
+    Sub_Data.vars['voltage'].set(V)
+    Sub_Data.vars['current'].set(I)
+    Sub_Data.vars['resistance'].set(round(R, 3))
+    Sub_Data.vars['power'].set(round(P, 3))
     
     # PID Controller
     kp = 1.5
@@ -714,17 +724,23 @@ if __name__=='__main__':
     ##############################
         
     ports = {}
-    # uvm ps
-#    ports['BKP PS'] = 'COM9'
-    
-    # isr ps
-    ports['BKP PS'] = 'COM28'
-    
-    ports['TC'] = 'COM13'
 
-#    ports['BKP PS'] = '/dev/ttyUSB0'
-#    ports['TC'] = '/dev/ttyUSB1'
-    
+    ### Moxa Connections ####
+    moxa_ip = '10.66.26.75'
+    moxa_port = 4007 # most likely you will need to change this based on what other instruments get plugged in. 
+
+    #### LAN Connection  ####
+    # Dont Change 5025! This is what the manual says it must be.
+    # At ISR instruments are allocated over the ethernet switch. This one is on the epics ports 
+    # Allowed ports 33-48 
+    ##########################
+    bkp_ps_ip = '10.66.27.183'
+    bkp_ps_port = 5025 
+
+
+    ports['BKP PS'] = f'socket://{bkp_ps_ip}:{bkp_ps_port}'
+    ports['TC'] = f'socket://{moxa_ip}:{moxa_port}'
+
     Sub_Data, Sub_PS, Sub_TC, C = initialize_controllers()
     # Sub_Data, Sub_PS, C = initialize_controllers()
     
@@ -783,6 +799,7 @@ if __name__=='__main__':
         """ Enable or Disable Power Supply """
         
         if data.vars['output'].get() == 1:
+            
             PS.set_output(1)
         else:
             PS.set_output(0)
@@ -816,7 +833,7 @@ if __name__=='__main__':
     # Set Power Supply on change of entry box
     def Set_Power_Supply_Current(PS, data):
         """ Set the Power Supply """
-        PS.set_current(data.vars['SP_V'].get())
+        PS.set_current(data.vars['SP_I'].get())
 
     Sub_Data.vars['SP_I'].trace_add('write', lambda a,b,c: Set_Power_Supply_Current(Sub_PS, Sub_Data))
    
@@ -933,11 +950,22 @@ if __name__=='__main__':
         # Consider adding PID value update for different temperature ranges
         # Option 1 - start with I=0, then change to 0.001 when temp gets to 400 or so
         # Update all values
+        # Read temperature
         Sub_Data.vars['temperature'].set(Sub_TC.get_temp())
-        Sub_Data.vars['voltage'].set(Sub_PS.get_voltage())
-        Sub_Data.vars['current'].set(Sub_PS.get_current())
-        Sub_Data.vars['resistance'].set(Sub_PS.calculate_resistance())
-        Sub_Data.vars['power'].set(Sub_PS.calculate_power())
+
+        # Read power supply measurements once
+        V = Sub_PS.get_voltage()
+        I = Sub_PS.get_current()
+
+        # Calculate resistance and power
+        R = V / I if I != 0 else 0
+        P = V * I
+
+        # Update data
+        Sub_Data.vars['voltage'].set(V)
+        Sub_Data.vars['current'].set(I)
+        Sub_Data.vars['resistance'].set(round(R, 3))
+        Sub_Data.vars['power'].set(round(P, 3))
         PID_Data.pid_vars['actual_sp'].set(A_SP)
         PID_Data.pid_vars['current_value'].set(CV)
         PID_Data.pid_vars['error'].set(C.getError())

@@ -28,7 +28,7 @@ class TC:
         self.gcpv = get_current_process_value.encode()
 ##        print self.gcpv
         
-        self.ser = serial.Serial(self.Port) # open the serial port
+        self.ser = serial.serial_for_url(self.Port) # open the serial port
         self.ser.baudrate = self.Baud
         self.ser.parity = self.Parity
         self.ser.bytesize = self.Byte
